@@ -217,70 +217,68 @@ function mergeGlobals(config, merge, optimizations) {
 	for (let i = config.length - 1; i >= 0; i--) {
 		const element = config[i];
 
-		if (isGlobalIgnoresElement(element)) {
+		if (isGlobalElement(element)) {
+			mergedGlobalConfig = mergedGlobalConfig === null
+				? element
+				: merge(mergedGlobalConfig, element);
+		} else if (isGlobalIgnoresElement(element)) {
 			if (optimizations.globalIgnores) {
 				globalIgnoresArrays.push(element.ignores);
 			} else {
 				mergedElements.push(element);
 			}
-		} else if (isGlobalElement(element)) {
-			mergedGlobalConfig = mergedGlobalConfig === null
-				? element
-				: merge(mergedGlobalConfig, element);
 		} else {
-			const mergedElement = mergedGlobalConfig === null
-				? element
-				: merge(element, mergedGlobalConfig);
-			
-			if (element.files) {
-				if (optimizations.fileGlobs) {
-					allFileGlobs.push(element.files);
-				}
-
-				if (optimizations.universalGlobs) {
-					const [universalFiles, nonUniversalFiles] = separateArray(element.files, isUniversalPattern);
-					mergedElements.push({
-						...mergedElement,
-						[ConfigElementSymbol.universalFiles]: universalFiles,
-						[ConfigElementSymbol.nonUniversalFiles]: nonUniversalFiles
-					});
-				}
-			} else {
-				mergedElements.push(mergedElement);
+			if (element.files && optimizations.fileGlobs) {
+				allFileGlobs.push(element.files);
 			}
+
+			const mergedElement = mergedGlobalConfig == null
+				? element
+				:{ ...element, ...merge(element, mergedGlobalConfig) };
+
+			
+			if (element.files && optimizations.universalGlobs) {
+				const [universalFiles, nonUniversalFiles] = separateArray(element.files, isUniversalPattern);
+				mergedElement[ConfigElementSymbol.universalFiles] = universalFiles;
+				mergedElement[ConfigElementSymbol.nonUniversalFiles] = nonUniversalFiles;
+			}
+
+			mergedElements.push(mergedElement);
 		}
 	}
 	
 	return {
-		globalIgnores: processGlobalIgnorePatterns(globalIgnoresArrays.reverse().flat()),
+		globalIgnores: processGlobalIgnorePatterns(globalIgnoresArrays.reverse()),
 		allFileGlobs: allFileGlobs.reverse().flat(),
 		mergedElements: mergedElements.reverse()
 	};
 }
 
-function processGlobalIgnorePatterns(ignorePatterns) {
+function processGlobalIgnorePatterns(ignorePatternsArray) {
 	const patterns = [];
-	for (const ignorePattern in ignorePatterns) {
-		patterns.push(ignorePattern);
+	for (const ignorePatterns of ignorePatternsArray) {
+		for (const ignorePattern of ignorePatterns) {
+			patterns.push(ignorePattern);
 
-		if (typeof ignorePattern === 'string') {
+			if (typeof ignorePattern === 'string') {
 
-			// unignoring files won't work unless we unignore directories too
-			if (ignorePattern.startsWith('!')) {
+				// unignoring files won't work unless we unignore directories too
+				if (ignorePattern.startsWith('!')) {
 
-				if (ignorePattern.endsWith('/**')) {
-					patterns.push(ignorePattern.slice(0, ignorePattern.length - 3));
-				} else if (ignorePattern.endsWith('/*')) {
-					patterns.push(ignorePattern.slice(0, ignorePattern.length - 2));
+					if (ignorePattern.endsWith('/**')) {
+						patterns.push(ignorePattern.slice(0, ignorePattern.length - 3));
+					} else if (ignorePattern.endsWith('/*')) {
+						patterns.push(ignorePattern.slice(0, ignorePattern.length - 2));
+					}
 				}
-			}
 
-			// directories should work with or without a trailing slash
-			if (ignorePattern.endsWith('/')) {
-				patterns.push(ignorePattern.slice(0, ignorePattern.length - 1));
-				patterns.push(ignorePattern + '**');
-			} else if (!ignorePattern.endsWith('*')) {
-				patterns.push(ignorePattern + '/**');
+				// directories should work with or without a trailing slash
+				if (ignorePattern.endsWith('/')) {
+					patterns.push(ignorePattern.slice(0, ignorePattern.length - 1));
+					patterns.push(ignorePattern + '**');
+				} else if (!ignorePattern.endsWith('*')) {
+					patterns.push(ignorePattern + '/**');
+				}
 			}
 		}
 	}
@@ -487,7 +485,7 @@ export class ConfigArray extends Array {
 		normalized = false,
 		schema: customSchema,
 		extraConfigTypes = [],
-		optimizations = { mergeGlobals: false, globalIgnores: false, fileGlobs: false, universalGlobs: false }
+		optimizations = { mergeGlobals: true, globalIgnores: true, fileGlobs: true, universalGlobs: true }
 	} = {}
 	) {
 		super();
@@ -867,7 +865,6 @@ export class ConfigArray extends Array {
 
 		const matchingConfigIndices = [];
 		let matchFound = false;
-		const universalPattern = /\/\*{1,2}$/;
 
 		this.forEach((config, index) => {
 
@@ -897,23 +894,22 @@ export class ConfigArray extends Array {
 			 * applied if there is another config where the filePath matches
 			 * a file with a specific extensions such as *.js.
 			 */
-
-			const universalFiles = this.#optimizations.universalGlobs
-				? config[ConfigElementSymbol.universalFiles]
-				: config.files.filter(pattern => universalPattern.test(pattern));
+			let universalFiles, nonUniversalFiles;
+			if (this.#optimizations.universalGlobs) {
+				universalFiles = config[ConfigElementSymbol.universalFiles];
+				nonUniversalFiles = config[ConfigElementSymbol.nonUniversalFiles];
+			} else {
+				[universalFiles, nonUniversalFiles] = separateArray(config.files, isUniversalPattern);
+			}
 
 			// universal patterns were found so we need to check the config twice
-			if (universalFiles?.length) {
+			if (universalFiles.length) {
 
 				debug('Universal files patterns found. Checking carefully.');
 
-				const nonUniversalFiles = this.#optimizations.universalGlobs
-					? config[ConfigElementSymbol.nonUniversalFiles]
-					: config.files.filter(pattern => !universalPattern.test(pattern));
-
 				// check that the config matches without the non-universal files first
 				if (
-					nonUniversalFiles?.length && 
+					nonUniversalFiles.length && 
 					pathMatches(
 						filePath, this.basePath,
 						{ files: nonUniversalFiles, ignores: config.ignores }

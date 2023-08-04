@@ -49,6 +49,7 @@
   "devDependencies": {
     "@nitpik/javascript": "0.4.0",
     "@nitpik/node": "0.0.5",
+    "benchmarkify": "^3.0.0",
     "chai": "4.3.7",
     "eslint": "8.41.0",
     "esm": "3.2.25",

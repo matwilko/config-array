@@ -173,10 +173,10 @@ describe('ConfigArray', () => {
 	let configs,
 		unnormalizedConfigs;
 
-	beforeEach(() => {
-		unnormalizedConfigs = new ConfigArray([], { basePath, extraConfigTypes: ['array', 'function'] });
+	beforeEach(async () => {
 		configs = createConfigArray();
-		return configs.normalize({
+		unnormalizedConfigs = new ConfigArray(configs, { basePath, extraConfigTypes: ['array', 'function'] });
+		await configs.normalize({
 			name: 'from-context'
 		});
 	});
@@ -335,13 +335,6 @@ describe('ConfigArray', () => {
 	});
 
 	describe('ConfigArray members', () => {
-
-		beforeEach(() => {
-			configs = createConfigArray();
-			return configs.normalize({
-				name: 'from-context'
-			});
-		});
 
 		describe('ConfigArraySymbol.finalizeConfig', () => {
 			it('should allow finalizeConfig to alter config before returning when calling normalize()', async () => {
@@ -1672,16 +1665,13 @@ describe('ConfigArray', () => {
 			});
 
 			it('should return all ignores from all configs without files when called', () => {
-				const expectedIgnores = configs.reduce((list, config) => {
-					if (config.ignores && Object.keys(config).length === 1) {
-						list.push(...config.ignores);
-					}
-
-					return list;
-				}, []);
+				const expectedIgnores = unnormalizedConfigs.flatMap(config => {
+					return config.ignores && Object.keys(config).length === 1
+						? config.ignores
+						: [];
+				});
 				const ignores = configs.ignores;
 				expect(ignores).to.deep.equal(expectedIgnores);
-
 			});
 		});
 
